@@ -1,0 +1,36 @@
+# Core Dependencies
+python-dotenv==1.0.0
+requests==2.31.0
+aiohttp==3.9.1
+httpx==0.27.0
+beautifulsoup4==4.12.3
+lxml==5.1.0
+html2text==2024.2.26
+
+# LLM Providers
+openai==1.54.0
+anthropic==0.18.1
+google-generativeai==0.3.2
+groq==0.9.0
+
+# Search Providers
+tavily-python==0.3.3
+
+# Web Scraping
+trafilatura==1.8.0
+readability-lxml==0.8.1
+
+# UI Framework
+streamlit==1.31.1
+
+# Storage
+sqlalchemy==2.0.27
+
+# Utilities
+python-dateutil==2.8.2
+pydantic==2.10.6
+
+# Evaluation
+pandas==2.2.0
+numpy==1.26.4
+scikit-learn==1.5.2
