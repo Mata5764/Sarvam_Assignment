@@ -3,40 +3,39 @@ Answer generator that creates citation-grounded responses from refined data.
 """
 import logging
 from typing import Optional
-from dataclasses import dataclass
-from utils.llm_client import LLMClient
+from utils.llm_client import create_llm_client
+from models.answer_generator_models import Citation, ResearchAnswer
+from prompts.answer_generator_prompts import (
+    ANSWER_GENERATOR_SYSTEM_PROMPT,
+    build_user_prompt
+)
+from config import config
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class Citation:
-    """Represents a source citation."""
-    title: str
-    domain: str
-    url: str
-
-
-@dataclass
-class ResearchAnswer:
-    """Complete answer with citations."""
-    answer: str
-    citations: list[Citation]
-    confidence: str  # "high", "medium", "low"
-    conflicts_detected: bool
 
 
 class AnswerGenerator:
     """Generates final answers from refined research data."""
     
-    def __init__(self, llm_client: LLMClient):
-        self.llm = llm_client
-        logger.info("AnswerGenerator initialized")
+    def __init__(self):
+        # Get answer generator-specific LLM config
+        generator_config = config.get_answer_generator_llm_config()
+        
+        # Create LLM client for answer generator
+        self.llm = create_llm_client(
+            provider=generator_config['provider'],
+            api_key=generator_config['api_key'],
+            model=generator_config['model'],
+            temperature=generator_config['temperature']
+        )
+        
+        logger.info(f"AnswerGenerator initialized with {generator_config['provider']}/{generator_config['model']}")
     
     async def generate_answer(
         self,
         query: str,
-        refined_data: list[dict]
+        refined_data: list[dict],
+        max_retries: int = 3
     ) -> ResearchAnswer:
         """
         Generate answer from refined data.
@@ -44,6 +43,7 @@ class AnswerGenerator:
         Args:
             query: Original user query
             refined_data: List of refined data dicts from refiner
+            max_retries: Maximum number of retry attempts for LLM calls
             
         Returns:
             ResearchAnswer with answer text and citations
@@ -53,33 +53,23 @@ class AnswerGenerator:
         if not refined_data:
             return ResearchAnswer(
                 answer="I couldn't find relevant information to answer this question.",
-                citations=[],
-                confidence="low",
-                conflicts_detected=False
+                citations=[]
             )
         
         # Build context from refined data
         context_text = self._build_context_from_refined_data(refined_data)
         
-        # Generate answer using LLM
-        answer_text = await self._generate_answer_text(query, context_text)
+        # Generate answer using LLM with retries
+        answer_text = await self._generate_answer_text(query, context_text, max_retries)
         
         # Extract citations
         citations = self._extract_citations(refined_data)
-        
-        # Detect conflicts (simplified)
-        conflicts = self._detect_conflicts(refined_data)
-        
-        # Determine confidence
-        confidence = self._calculate_confidence(refined_data)
         
         logger.info(f"Generated answer with {len(citations)} citations")
         
         return ResearchAnswer(
             answer=answer_text,
-            citations=citations,
-            confidence=confidence,
-            conflicts_detected=conflicts
+            citations=citations
         )
     
     def _build_context_from_refined_data(self, refined_data: list[dict]) -> str:
@@ -107,31 +97,30 @@ class AnswerGenerator:
         
         return "\n\n".join(context_parts)
     
-    async def _generate_answer_text(self, query: str, context_text: str) -> str:
-        """Generate answer text using LLM."""
-        system_prompt = """You are a helpful research assistant. Generate a comprehensive answer based on the provided sources.
-Include inline citations using [Source N] format.
-If sources conflict, mention the disagreement.
-If information is insufficient, say so."""
+    async def _generate_answer_text(self, query: str, context_text: str, max_retries: int = 3) -> str:
+        """Generate answer text using LLM with retry logic."""
+        
+        # Build user prompt using the prompt builder
+        user_prompt = build_user_prompt(query, context_text)
 
-        user_prompt = f"""Question: {query}
-
-Research findings:
-{context_text}
-
-Generate a well-structured answer with citations."""
-
-        try:
-            answer = await self.llm.generate(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                temperature=0.4,
-                max_tokens=1000
-            )
-            return answer.strip()
-        except Exception as e:
-            logger.error(f"Error generating answer: {e}")
-            return "I encountered an error generating the answer."
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                messages = [
+                    {"role": "system", "content": ANSWER_GENERATOR_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt}
+                ]
+                
+                answer = await self.llm.generate(messages)
+                return answer.strip()
+            
+            except Exception as e:
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.info(f"Answer generation failed (attempt {retry_count}/{max_retries}), retrying: {e}")
+                else:
+                    logger.warning(f"Answer generation failed after {max_retries} retries: {e}")
+                    return "I encountered an error generating the answer."
     
     def _extract_citations(self, refined_data: list[dict]) -> list[Citation]:
         """Extract citations from refined data."""
@@ -162,29 +151,3 @@ Generate a well-structured answer with citations."""
             return domain
         except:
             return url
-    
-    def _detect_conflicts(self, refined_data: list[dict]) -> bool:
-        """Detect if there are conflicts in the data (simplified)."""
-        # Simple heuristic: check if "conflict" or "disagree" appears
-        for data in refined_data:
-            data_str = str(data).lower()
-            if "conflict" in data_str or "disagree" in data_str or "however" in data_str:
-                return True
-        return False
-    
-    def _calculate_confidence(self, refined_data: list[dict]) -> str:
-        """Calculate confidence level based on refined data."""
-        if not refined_data:
-            return "low"
-        
-        # Check if we have multiple sources
-        total_sources = sum(
-            len(data.get("sources", [])) for data in refined_data
-        )
-        
-        if total_sources >= 3:
-            return "high"
-        elif total_sources >= 2:
-            return "medium"
-        else:
-            return "low"

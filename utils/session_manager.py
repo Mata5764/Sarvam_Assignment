@@ -21,6 +21,7 @@ class TurnData:
     search_queries: List[str]
     urls_opened: List[str]
     refined_data: List[dict]
+    raw_search_results: List[dict]  # NEW: Store raw content from searches
     final_answer: str
     citations: List[dict]
     timestamp: str

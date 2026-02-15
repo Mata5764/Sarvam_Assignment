@@ -42,6 +42,11 @@ class Config:
     CONTEXT_RESOLVER_LLM_MODEL = os.getenv("CONTEXT_RESOLVER_LLM_MODEL", LLM_MODEL)
     CONTEXT_RESOLVER_LLM_TEMPERATURE = float(os.getenv("CONTEXT_RESOLVER_LLM_TEMPERATURE", "0.4"))
     
+    # Answer Generator LLM Configuration (For final answer synthesis)
+    ANSWER_GENERATOR_LLM_PROVIDER = os.getenv("ANSWER_GENERATOR_LLM_PROVIDER", LLM_PROVIDER)
+    ANSWER_GENERATOR_LLM_MODEL = os.getenv("ANSWER_GENERATOR_LLM_MODEL", LLM_MODEL)
+    ANSWER_GENERATOR_LLM_TEMPERATURE = float(os.getenv("ANSWER_GENERATOR_LLM_TEMPERATURE", "0.4"))
+    
     # API Keys
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -52,8 +57,8 @@ class Config:
     
     # Search Configuration
     SEARCH_PROVIDER = os.getenv("SEARCH_PROVIDER", "tavily")
-    MAX_SEARCH_RESULTS = int(os.getenv("MAX_SEARCH_RESULTS", "5"))
-    MAX_PAGES_TO_FETCH = int(os.getenv("MAX_PAGES_TO_FETCH", "5"))
+    MAX_SEARCH_RESULTS = int(os.getenv("MAX_SEARCH_RESULTS", "8"))  # Increased from 5
+    MAX_PAGES_TO_FETCH = int(os.getenv("MAX_PAGES_TO_FETCH", "8"))  # Increased from 5
     
     # Context Configuration
     MAX_CONTEXT_TOKENS = int(os.getenv("MAX_CONTEXT_TOKENS", "8000"))
@@ -126,6 +131,16 @@ class Config:
             "model": cls.CONTEXT_RESOLVER_LLM_MODEL,
             "temperature": cls.CONTEXT_RESOLVER_LLM_TEMPERATURE,
             "api_key": getattr(cls, f"{cls.CONTEXT_RESOLVER_LLM_PROVIDER.upper()}_API_KEY"),
+        }
+    
+    @classmethod
+    def get_answer_generator_llm_config(cls) -> dict:
+        """Get Answer Generator-specific LLM configuration."""
+        return {
+            "provider": cls.ANSWER_GENERATOR_LLM_PROVIDER,
+            "model": cls.ANSWER_GENERATOR_LLM_MODEL,
+            "temperature": cls.ANSWER_GENERATOR_LLM_TEMPERATURE,
+            "api_key": getattr(cls, f"{cls.ANSWER_GENERATOR_LLM_PROVIDER.upper()}_API_KEY"),
         }
     
     @classmethod

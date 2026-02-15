@@ -7,7 +7,7 @@ from typing import Optional
 from pydantic import ValidationError
 
 from utils.llm_client import create_llm_client
-from prompts.research_strategy import RESEARCH_STRATEGY_SYSTEM_PROMPT, build_user_prompt
+from prompts.research_strategy_prompts import RESEARCH_STRATEGY_SYSTEM_PROMPT, build_user_prompt
 from models.strategist_models import ResearchStrategy, ExecutionStep, SearchQuery
 from config import config
 
@@ -50,7 +50,7 @@ class Strategist:
             ]
             
             response = await self.llm_client.generate(messages=messages)
-            print(f"response: {response}")
+            print(f"\n\nresponse: {response}")
             
             logger.debug(f"LLM strategy response: {response}")
             

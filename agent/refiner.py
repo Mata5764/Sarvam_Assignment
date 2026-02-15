@@ -7,7 +7,7 @@ from typing import Optional
 from agent.search import SearchResult
 from utils.llm_client import create_llm_client
 from models.refiner_models import RefineResult, RefinerLLMResponse
-from prompts.refiner import REFINER_SYSTEM_PROMPT
+from prompts.refiner_prompts import REFINER_SYSTEM_PROMPT
 from pydantic import ValidationError
 from config import config
 import json
@@ -56,7 +56,8 @@ class Refiner:
         # Use LLM to analyze and extract relevant info
         try:
             refined = await self._llm_refine(query, results)
-            
+
+            print(f"\n\nrefined: {refined}")
             # Decide if we should retry
             should_retry = (
                 refined["score"] < 0.5 and 

@@ -12,10 +12,11 @@ from pydantic import BaseModel, field_validator, ValidationError
 from agent.search import create_search_provider, SearchResult
 from agent.refiner import Refiner
 from agent.context_resolver import ContextResolver
-from agent.answer_generator import AnswerGenerator, ResearchAnswer
+from agent.answer_generator import AnswerGenerator
 from agent.strategist import Strategist
 from models.strategist_models import ResearchStrategy, ExecutionStep, SearchQuery
 from models.refiner_models import RefineResult
+from models.answer_generator_models import ResearchAnswer
 from utils.llm_client import create_llm_client
 from utils.session_manager import SessionManager, TurnData
 from config import config
@@ -54,7 +55,7 @@ class ResearchAgent:
         )
         self.refiner = Refiner()  # Creates its own LLM client
         self.context_resolver = ContextResolver()  # Creates its own LLM client
-        self.answer_generator = AnswerGenerator(self.llm_client)
+        self.answer_generator = AnswerGenerator()  # Creates its own LLM client
         self.strategist = Strategist()  # Creates its own LLM client
         self.session_manager = SessionManager()  # Session management
         
@@ -90,16 +91,19 @@ class ResearchAgent:
         
         def emit(stage: str, message: str):
             if progress_callback:
-                progress_callback(f"[{stage.upper()}] {message}")
+                # Only show search queries, nothing else
+                if stage == "search":
+                    progress_callback(f"🔍 {message}")
+                # Silently skip all other stages
         
         try:
             # Step 0: Plan research strategy
-            emit("plan", "Planning research strategy...")
+            emit("plan", "Analyzing query...")
             strategy = await self.strategist.plan_research_strategy(query, conversation_history)
-            emit("plan", f"Strategy: {strategy.execution_type} with {len(strategy.steps)} steps - {strategy.reason_summary}")
+            emit("plan", f"{strategy.execution_type.title()} strategy with {len(strategy.steps)} step(s)")
             
             # Step 1 & 2: Execute steps to get refined data
-            all_refined_data, all_search_queries, urls_used = await self._execute_steps(
+            all_refined_data, all_search_queries, urls_used, raw_results = await self._execute_steps(
                 strategy=strategy,
                 original_query=query,
                 conversation_history=conversation_history,
@@ -110,14 +114,14 @@ class ResearchAgent:
                 result = self._create_no_results_response(query)
                 self._save_turn_to_session(
                     session_id, query, strategy.execution_type, all_search_queries,
-                    [], all_refined_data, result.answer, start_time
+                    [], all_refined_data, [], result.answer, start_time
                 )
                 return result
             
             # Step 3: Generate answer from refined data
-            emit("answer", "Generating answer from refined data...")
+            emit("answer", "Synthesizing answer...")
             answer = await self.answer_generator.generate_answer(query, all_refined_data)
-            emit("answer", f"Complete! ({len(answer.citations)} citations)")
+            emit("answer", f"Complete with {len(answer.citations)} citation(s)")
             
             # Save assistant answer to conversation
             self.session_manager.save_conversation_message(session_id, "assistant", answer.answer)
@@ -133,7 +137,7 @@ class ResearchAgent:
             # Save turn history
             self._save_turn_to_session(
                 session_id, query, strategy.execution_type, all_search_queries,
-                result.urls_used, all_refined_data, answer, start_time
+                result.urls_used, all_refined_data, raw_results, answer, start_time
             )
             
             return result
@@ -144,9 +148,7 @@ class ResearchAgent:
                 query=query,
                 answer=ResearchAnswer(
                     answer=f"I encountered an error during research: {str(e)}",
-                    citations=[],
-                    confidence="low",
-                    conflicts_detected=False
+                    citations=[]
                 ),
                 search_results=[],
                 urls_used=[]
@@ -154,7 +156,7 @@ class ResearchAgent:
             
             # Save error turn
             self._save_turn_to_session(
-                session_id, query, "error", [], [], [], result.answer, start_time
+                session_id, query, "error", [], [], [], [], result.answer, start_time
             )
             
             return result
@@ -165,18 +167,19 @@ class ResearchAgent:
         original_query: str,
         conversation_history: Optional[list[dict]],
         emit: Callable
-    ) -> tuple[list[dict], list[str], list[str]]:
+    ) -> tuple[list[dict], list[str], list[str], list[dict]]:
         """
         Execute strategy steps in order, handling dependencies and actions.
-        Returns: (all_refined_data, all_search_queries, urls_used)
+        Returns: (all_refined_data, all_search_queries, urls_used, raw_search_results)
         """
         all_refined_data = []
         all_search_queries = []
         urls_used = []
+        raw_search_results = []  # Store raw content from searches
         step_results = {}  # Store results by step_id for dependency resolution
         
         for step in strategy.steps:
-            emit("step", f"Step {step.step_id}: {step.description}")
+            emit("step", f"Step {step.step_id}/{len(strategy.steps)}: {step.description}")
             logger.info(f"Executing step {step.step_id} (action={step.action}, mode={step.mode})")
             
             # Check dependencies
@@ -184,31 +187,30 @@ class ResearchAgent:
                 missing_deps = [dep_id for dep_id in step.depends_on if dep_id not in step_results]
                 if missing_deps:
                     logger.error(f"Step {step.step_id} has missing dependencies: {missing_deps}")
+                    emit("step", f"Missing dependencies: {missing_deps}")
                     continue
             
             # Handle based on action type
             if step.action == "search":
                 # Refine queries if step has dependencies (use previous results)
                 if step.depends_on:
-                    emit("context", f"Refining queries for step {step.step_id} based on previous results...")
+                    emit("context", "Refining queries with previous results...")
                     
-                    # Collect previous refined data from dependencies
-                    previous_data = []
+                    # Collect and format previous refined data from dependencies
+                    previous_context = ""
                     for dep_id in step.depends_on:
                         if dep_id in step_results:
-                            previous_data.extend(step_results[dep_id])
+                            for idx, data in enumerate(step_results[dep_id], 1):
+                                if data.get("refined_data"):
+                                    previous_context += f"[{idx}] {data['refined_data']}\n\n"
                     
-                    # Use ContextResolver to generate context-aware queries
-                    refined_queries = await self.context_resolver.refine_queries(
+                    # Use ContextResolver to get refined step
+                    step = await self.context_resolver.add_context(
                         current_step=step,
-                        previous_results=previous_data,
-                        conversation_history=conversation_history,
-                        original_query=original_query
+                        previous_context=previous_context,
+                        conversation_history=conversation_history
                     )
-                    
-                    # Update step's search queries with refined ones
-                    step.search_queries = [SearchQuery(query=q) for q in refined_queries]
-                    logger.info(f"Refined {len(refined_queries)} queries for step {step.step_id}")
+                    logger.info(f"Applied context refinement to step {step.step_id}")
                 
                 # Execute searches
                 step_refined_data = await self._execute_search_step(
@@ -235,6 +237,16 @@ class ResearchAgent:
                             # Extract URLs from refined data
                             if "sources" in data:
                                 urls_used.extend([s.get("url", "") for s in data["sources"]])
+                            
+                            # NEW: Store raw search result
+                            if "raw_content" in data:
+                                raw_search_results.append({
+                                    "query": search_query.query,
+                                    "url": data.get("url", ""),
+                                    "title": data.get("title", ""),
+                                    "content": data["raw_content"],
+                                    "timestamp": datetime.now().isoformat()
+                                })
                         else:
                             # Log failed searches but don't add to refined_data
                             logger.info(f"Skipping failed search result for query: {search_query.query}")
@@ -242,11 +254,11 @@ class ResearchAgent:
                 # Store results for this step (only successful ones with score > 0)
                 successful_results = [d for d in step_refined_data if d.get("score", 0) > 0]
                 step_results[step.step_id] = successful_results
-                emit("step", f"Step {step.step_id} completed: {len(successful_results)}/{len(step.search_queries)} successful")
+                emit("step", f"Completed: {len(successful_results)}/{len(step.search_queries)} successful")
             
             elif step.action == "generation":
                 # Generation step - just prepare data for answer generation
-                emit("step", f"Step {step.step_id}: Ready for answer generation")
+                emit("step", "Ready for synthesis")
                 # Collect data from dependencies
                 for dep_id in step.depends_on:
                     if dep_id in step_results:
@@ -257,7 +269,7 @@ class ResearchAgent:
             else:
                 logger.warning(f"Unknown action type: {step.action}")
         
-        return all_refined_data, all_search_queries, urls_used
+        return all_refined_data, all_search_queries, urls_used, raw_search_results
     
     async def _execute_search_step(
         self,
@@ -281,13 +293,15 @@ class ResearchAgent:
             if step.mode == "single":
                 # Execute single query
                 search_query = step.search_queries[0]
-                emit("search", f"Searching: {search_query.query}")
+                emit("search", search_query.query)
                 refined_data = await self._search_with_refine(search_query.query, emit)
                 return [refined_data]  # Return as list with one element (always a dict)
             
             elif step.mode == "parallel":
                 # Execute queries in parallel
-                emit("search", f"Searching {len(step.search_queries)} queries in parallel...")
+                for sq in step.search_queries:
+                    emit("search", sq.query)
+                
                 tasks = [
                     self._search_with_refine(
                         search_query.query,
@@ -353,8 +367,7 @@ class ResearchAgent:
         best_result = None  # Track best result across retries
         
         while retry_count <= max_retries:
-            # Execute search
-            emit("search", f"Searching: '{query}' (attempt {retry_count + 1})")
+            # Execute search (no emit here, already emitted in _execute_search_step)
             search_results = await self.search_provider.search(query, self.max_search_results)
             
             # Validate search results
@@ -367,14 +380,15 @@ class ResearchAgent:
             results_with_content = validation_result
             
             # Refine results (only quality validation now)
-            emit("refine", "Validating and extracting relevant info...")
             refine_result = await self.refiner.refine_search_results(
                 query=query,
                 results=results_with_content,  # Pass filtered results
                 retry_count=retry_count
             )
             
-            emit("refine", f"Quality score: {refine_result.score:.2f} - {refine_result.reason}")
+            # Only emit refiner info if score is low or needs retry
+            if refine_result.should_retry:
+                emit("refine", f"Score: {refine_result.score:.2f}, retrying...")
             
             # Build result structure with only used sources
             current_result = {
@@ -398,7 +412,6 @@ class ResearchAgent:
             
             # Check if we should retry
             if refine_result.should_retry:
-                emit("refine", f"Low quality results, retrying...")
                 retry_count += 1
                 continue
             else:
@@ -409,12 +422,11 @@ class ResearchAgent:
         if best_result:
             # Return best attempt we found
             logger.warning(f"Max retries reached for query '{query}', using best result (score: {best_result['score']})")
-            emit("refine", f"Max retries reached, using best result (score: {best_result['score']:.2f})")
             return best_result
         else:
             # All retries failed - return structured failure result
             logger.error(f"All retries failed for query '{query}', no valid results found")
-            emit("refine", "All retries failed, no valid results found")
+            emit("refine", "No valid results found after retries")
             return {
                 "refined_data": f"Unable to find relevant information for query: {query}",
                 "sources": [],
@@ -462,9 +474,7 @@ class ResearchAgent:
             query=query,
             answer=ResearchAnswer(
                 answer=f"No search results found for: '{query}'. Please try rephrasing your question.",
-                citations=[],
-                confidence="low",
-                conflicts_detected=False
+                citations=[]
             )
         )
     
@@ -476,6 +486,7 @@ class ResearchAgent:
         search_queries: list[str],
         urls_opened: list[str],
         refined_data: list[dict],
+        raw_search_results: list[dict],
         answer: ResearchAnswer,
         start_time: datetime
     ):
@@ -490,6 +501,7 @@ class ResearchAgent:
             search_queries=search_queries,
             urls_opened=urls_opened,
             refined_data=refined_data,
+            raw_search_results=raw_search_results,
             final_answer=answer.answer,
             citations=[{"title": c.title, "domain": c.domain, "url": c.url} for c in answer.citations],
             timestamp=start_time.isoformat(),

@@ -21,7 +21,7 @@ trafilatura==1.8.0
 readability-lxml==0.8.1
 
 # UI Framework
-streamlit==1.31.1
+streamlit==1.41.1
 
 # Storage
 sqlalchemy==2.0.27

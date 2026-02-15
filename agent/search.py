@@ -34,9 +34,11 @@ class TavilySearch(SearchProvider):
                 "api_key": self.api_key,
                 "query": query,
                 "max_results": max_results,
-                "search_depth": "basic",
+                "search_depth": "advanced",  # "basic" or "advanced" - more comprehensive
                 "include_raw_content": True,  # Get full page content
-                "include_answer": False,
+                "include_answer": True,  # Get Tavily's AI-generated answer
+                "topic": "general",  # "general" or "news"
+                "days": None,  # Limit to recent results (e.g., 7 for last week)
             }
             
             async with aiohttp.ClientSession() as session:
