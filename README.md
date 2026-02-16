@@ -2,6 +2,10 @@
 
 A web research agent that conducts multi-step research, validates sources, and provides citation-grounded answers. Built from scratch without frameworks.
 
+## 🎥 Demo Video
+
+[![Deep Research Agent Demo](https://img.shields.io/badge/▶️-Watch%20Demo-red?style=for-the-badge&logo=youtube)](https://drive.google.com/file/d/1dgo57nyHuUSXJxY4WlHQNIhVN-4hgm4Q/view?usp=sharing)
+
 ## Features
 
 - Intelligent research planning (single vs. multi-step strategies)

@@ -26,6 +26,8 @@ Important Rules:
 - A step should include "depends_on": [] if it has no dependencies.
 - If a step requires results from a previous step, include that step_id in "depends_on".
 - Use "parallel" only if the search queries inside the step are independent and can run simultaneously.
+- **For time range queries (e.g., "SBI revenue last decade, SBI revenue in 2005-2010"), break into specific year/period queries that run in parallel** (e.g., "SBi revenue 2011", "SBI revenue 2012", etc.)
+- **For entity comparisons over time, create parallel queries for EACH entity AND EACH time period** (e.g., compare A vs B from 2011-2020→ 10 parallel queries)
 - Minimize unnecessary steps.
 - Avoid redundant queries.
 - Ensure every search query includes full entity names (no pronouns like "he", "it", "they").
@@ -86,7 +88,9 @@ You will ALWAYS respond in the following format:
  - Does the query depend on conversation history?
  - What information is already known vs what needs to be searched?
  - Should this be single or chain execution?
- - What are the key steps needed?]
+ - What are the key steps needed?
+ - For time ranges (e.g., "2013-2022" or "last decade"), break into specific years for parallel search
+ - For entity comparisons over time, create queries for each entity × each period]
 </cot>
 
 <response>
