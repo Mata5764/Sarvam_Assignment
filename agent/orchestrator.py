@@ -31,6 +31,8 @@ class ResearchResult:
     answer: ResearchAnswer
     search_results: list[SearchResult] = None
     urls_used: list[str] = None
+    strategy_data: dict = None
+    search_steps_data: list[dict] = None
 
 
 class ResearchAgent:
@@ -126,12 +128,45 @@ class ResearchAgent:
             # Save assistant answer to conversation
             self.session_manager.save_conversation_message(session_id, "assistant", answer.answer)
             
+            # Prepare evaluation data
+            strategy_data = {
+                'type': strategy.execution_type,
+                'steps': [
+                    {
+                        'step_id': step.step_id,
+                        'description': step.description,
+                        'action': step.action,
+                        'mode': step.mode,
+                        'search_queries': [{'query': q.query} for q in step.search_queries] if step.search_queries else []
+                    }
+                    for step in strategy.steps
+                ],
+                'reasoning': strategy.reason_summary,
+                'confidence': strategy.confidence
+            }
+            
+            search_steps_data = []
+            for step in strategy.steps:
+                if step.action == "search":
+                    step_data = {
+                        'step_id': step.step_id,
+                        'description': step.description,
+                        'queries': [q.query for q in step.search_queries],
+                        'refined_data': [
+                            rd for rd in all_refined_data 
+                            if rd.get('query') in [q.query for q in step.search_queries]
+                        ]
+                    }
+                    search_steps_data.append(step_data)
+            
             # Create result
             result = ResearchResult(
                 query=query,
                 answer=answer,
                 search_results=[],
-                urls_used=list(set(urls_used))
+                urls_used=list(set(urls_used)),
+                strategy_data=strategy_data,
+                search_steps_data=search_steps_data
             )
             
             # Save turn history

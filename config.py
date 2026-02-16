@@ -47,6 +47,11 @@ class Config:
     ANSWER_GENERATOR_LLM_MODEL = os.getenv("ANSWER_GENERATOR_LLM_MODEL", LLM_MODEL)
     ANSWER_GENERATOR_LLM_TEMPERATURE = float(os.getenv("ANSWER_GENERATOR_LLM_TEMPERATURE", "0.4"))
     
+    # LLM Judge Configuration (For evaluation)
+    LLM_JUDGE_PROVIDER = os.getenv("LLM_JUDGE_PROVIDER", LLM_PROVIDER)
+    LLM_JUDGE_MODEL = os.getenv("LLM_JUDGE_MODEL", LLM_MODEL)
+    LLM_JUDGE_TEMPERATURE = float(os.getenv("LLM_JUDGE_TEMPERATURE", "0.2"))
+    
     # API Keys
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -141,6 +146,16 @@ class Config:
             "model": cls.ANSWER_GENERATOR_LLM_MODEL,
             "temperature": cls.ANSWER_GENERATOR_LLM_TEMPERATURE,
             "api_key": getattr(cls, f"{cls.ANSWER_GENERATOR_LLM_PROVIDER.upper()}_API_KEY"),
+        }
+    
+    @classmethod
+    def get_llm_judge_config(cls) -> dict:
+        """Get LLM Judge-specific configuration."""
+        return {
+            "provider": cls.LLM_JUDGE_PROVIDER,
+            "model": cls.LLM_JUDGE_MODEL,
+            "temperature": cls.LLM_JUDGE_TEMPERATURE,
+            "api_key": getattr(cls, f"{cls.LLM_JUDGE_PROVIDER.upper()}_API_KEY"),
         }
     
     @classmethod

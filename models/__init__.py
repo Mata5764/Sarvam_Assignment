@@ -6,6 +6,7 @@ from .strategist_models import ResearchStrategy, ExecutionStep, SearchQuery
 from .refiner_models import RefineResult
 from .search_models import SearchResult
 from .answer_generator_models import Citation, ResearchAnswer
+from .llm_judge_models import StepScore, LLMJudgeResult
 
 __all__ = [
     'ResearchStrategy',
@@ -14,5 +15,7 @@ __all__ = [
     'RefineResult',
     'SearchResult',
     'Citation',
-    'ResearchAnswer'
+    'ResearchAnswer',
+    'StepScore',
+    'LLMJudgeResult'
 ]

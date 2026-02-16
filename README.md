@@ -34,6 +34,9 @@ CONTEXT_RESOLVER_LLM_MODEL=llama-3.3-70b-versatile
 ANSWER_GENERATOR_LLM_PROVIDER=groq
 ANSWER_GENERATOR_LLM_MODEL=llama-3.3-70b-versatile
 
+LLM_JUDGE_PROVIDER=groq
+LLM_JUDGE_MODEL=moonshotai/kimi-k2-instruct-0905
+
 # 3. Run
 streamlit run app.py
 ```
@@ -149,11 +152,35 @@ For Each Step:
 
 ## Evaluation
 
+LLM-as-Judge evaluation that scores each step of the research process.
+
 ```bash
-python evaluation/run_evaluation.py
+# Full evaluation (12 questions)
+python3 evaluation/run_evaluation.py
+
+# Quick test (1 question)
+python3 evaluation/run_evaluation.py --max-questions 1
+
+# Specific category
+python3 evaluation/run_evaluation.py --max-questions 5
 ```
 
-Tests: Factual, Multi-hop, Comparison, Recent, Technical queries
+**Evaluation Criteria:**
+
+The LLM Judge evaluates 5 components with chain-of-thought reasoning:
+
+1. **Strategy Planning** (20%): Execution type, step logic, query formulation
+2. **Web Search Quality** (20%): Query relevance, result quality, information utility
+3. **Content Refinement** (20%): Extraction accuracy, refiner scores, relevance
+4. **Context Resolution** (10%): Query enhancement, specificity, appropriateness
+5. **Answer Generation** (30%): Completeness, citation quality, accuracy, clarity
+
+**Outputs**:
+- Per-question scores (0.0-1.0) with detailed reasoning for each component
+- JSON results with aggregate metrics
+- Console summary with weighted overall scores
+
+See `evaluation/LLM_JUDGE.md` for full details.
 
 ## Project Structure
 

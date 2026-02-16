@@ -50,7 +50,7 @@ class Strategist:
             ]
             
             response = await self.llm_client.generate(messages=messages)
-            print(f"\n\nresponse: {response}")
+            #(f"\n\nresponse: {response}")
             
             logger.debug(f"LLM strategy response: {response}")
             
